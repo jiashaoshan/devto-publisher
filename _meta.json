@@ -1,0 +1,15 @@
+{
+  "name": "devto-publisher",
+  "version": "1.0.0",
+  "description": "dev.to 全栈运营技能。AI 文章生成+发布 + 评论区获客(搜索→评分→LLM评论)。",
+  "license": "MIT",
+  "author": "JARVIS",
+  "scripts": {
+    "publish": "python3 scripts/devto-article-publisher.py",
+    "acquisition": "python3 scripts/devto_acquisition.py"
+  },
+  "config": {
+    "api_base": "https://dev.to/api",
+    "auth": "api-key"
+  }
+}
