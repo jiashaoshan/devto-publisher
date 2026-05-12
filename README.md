@@ -88,6 +88,9 @@ devto-publisher/
 ├── templates/
 │   ├── article-prompt.md          # 文章生成模板
 │   └── comment-strategic.md       # 评论生成模板
+├── bw-scripts/
+│   ├── devto-comment.json         # BrowserWing 脚本备份（可重新导入）
+│   └── devto-comment.md          # 脚本说明文档
 └── data/                          # 草稿/发布历史/评论历史
 ```
 
@@ -213,10 +216,20 @@ python3 scripts/devto_acquisition.py history
 
 ### 浏览器脚本
 
-评论区发表使用 BrowserWing 自动化脚本（已录制）：
-- 脚本 ID: `8fda52e1-f197-4ed5-8ee6-8dec3d555a74`
-- 参数: `{ "内容": "...", "链接": "..." }`
-- 需要 dev.to 登录 Cookie（已保存在 `.devto_cookie`）
+评论区发表使用 BrowserWing 自动化脚本：
+
+| 项目 | 说明 |
+|------|------|
+| 脚本 ID | `8fda52e1-f197-4ed5-8ee6-8dec3d555a74` |
+| 参数 | `{ "内容": "...", "链接": "..." }` |
+| 备份位置 | `bw-scripts/devto-comment.json`（可重新导入 BrowserWing）|
+| Cookie | 需 dev.to 登录 Cookie（已保存在 `.devto_cookie`） |
+
+**执行步骤**（详见 `bw-scripts/devto-comment.md`）：
+1. 打开文章页面
+2. 等待评论区输入框 (`#text-area`) 加载
+3. 填入评论内容
+4. 点击 Submit 按钮发表
 
 ---
 

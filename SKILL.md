@@ -98,6 +98,9 @@ devto-publisher/
 ├── .env                           # API Key
 ├── .devto_cookie                  # 登录 Cookie
 ├── .gitignore
+├── bw-scripts/
+│   ├── devto-comment.json         # BrowserWing 脚本备份
+│   └── devto-comment.md          # 脚本说明
 ├── scripts/
 │   ├── devto-article-publisher.py # 文章发布
 │   ├── devto_acquisition.py       # 评论区获客
