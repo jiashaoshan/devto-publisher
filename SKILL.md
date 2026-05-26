@@ -15,7 +15,11 @@ metadata:
       - pip3 install requests
 ---
 
-# dev.to 全栈运营技能 v1.0
+# dev.to 全栈运营技能 v1.2
+
+> **v1.2 修复 (2026-05-26)**: LLM 模块改为动态检测 Hermes 当前模型 + 稳定提供商兜底（`sensenova` → `deepseek`），不再硬编码 `baiduqianfancodingplan`（该 provider 频繁限流且模型兼容性差）。详见 `references/llm-provider-fallback.md`。
+
+> **v1.1 修复 (2026-05-26)**: 修复 API Key 读取逻辑（新增 `~/.hermes/.env` 路径、公开 API 不强制要求 key）、修复 BrowserWing URL 硬编码、增加 ConnectionError 友好提示。详见 `references/devto-api-quirks.md`。
 
 ## 功能总览
 
@@ -32,7 +36,7 @@ metadata:
 
 1. **dev.to API Key**: 从 [dev.to/settings/account](https://dev.to/settings/account) 生成
 2. **BrowserWing**: 运行在 `http://127.0.0.1:8080`（评论功能需要）
-3. **LLM 模型**: 自动读取 openclaw.json 中 `baiduqianfancodingplan` 配置
+3. **LLM 模型**: 自动读取 Hermes 当前模型配置 → 在 openclaw.json 中匹配可用 provider（稳定兜底: `sensenova` → `deepseek`）
 
 ### 配置
 
@@ -83,7 +87,7 @@ Product URL
 | 决策 | 选择 | 原因 |
 |------|------|------|
 | 评论发表方式 | BrowserWing | dev.to API 不支持创建评论 |
-| LLM 模型 | baiduqianfancodingplan | 自动读取 openclaw 配置 |
+| LLM 模型提供商 | 动态检测 → 稳定兜底 `sensenova`/`deepseek` | `baiduqianfancodingplan` 频繁限流、`volcengine-plan` 无 CodingPlan 订阅 |
 | 评论生成 | ThreadPool 并发 | 节省 70% 时间 |
 | 评论发表 | 串行 + 随机间隔 | 避免触发风控 |
 | 文章风格 | 经验分享 | dev.to 开发者讨厌硬广 |

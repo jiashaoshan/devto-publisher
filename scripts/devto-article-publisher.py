@@ -74,6 +74,19 @@ def get_devto_api_key() -> str:
     key = env.get("DEVTO_API_KEY", "")
     if key:
         return key
+    # 2.5 hermes .env
+    hermes_env = os.path.expanduser("~/.hermes/.env")
+    if os.path.exists(hermes_env):
+        try:
+            with open(hermes_env) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("DEVTO_API_KEY="):
+                        key = line.split("=", 1)[1].strip().strip("\"'")
+                        if key:
+                            return key
+        except Exception:
+            pass
     # 3. openclaw 全局配置
     try:
         import json

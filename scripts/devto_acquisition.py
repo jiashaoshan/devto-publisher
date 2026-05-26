@@ -79,15 +79,31 @@ def load_env() -> Dict[str, str]:
     return env
 
 
-def get_devto_api_key() -> str:
-    """获取 dev.to API Key"""
+def get_devto_api_key() -> Optional[str]:
+    """获取 dev.to API Key（可选，搜索/详情不需要，发布/评论需要）"""
+    # 1. 环境变量
     key = os.environ.get("DEVTO_API_KEY", "")
     if key:
         return key
+    # 2. .env 文件
     env = load_env()
     key = env.get("DEVTO_API_KEY", "")
     if key:
         return key
+    # 3. hermes .env
+    hermes_env = os.path.expanduser("~/.hermes/.env")
+    if os.path.exists(hermes_env):
+        try:
+            with open(hermes_env) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("DEVTO_API_KEY="):
+                        key = line.split("=", 1)[1].strip().strip("\"'")
+                        if key:
+                            return key
+        except Exception:
+            pass
+    # 4. openclaw.json
     try:
         with open(os.path.expanduser("~/.openclaw/openclaw.json")) as f:
             oc = json.load(f)
@@ -99,15 +115,22 @@ def get_devto_api_key() -> str:
                         return v.strip()
     except Exception:
         pass
-    raise ValueError("DEVTO_API_KEY 未配置")
+    # API Key 不是必须的（搜索/详情 API 公开），返回 None
+    return None
 
 
-def get_headers() -> Dict[str, str]:
-    return {
-        "api-key": get_devto_api_key(),
+def get_headers(require_key: bool = False) -> Dict[str, str]:
+    """获取请求头。require_key=True 时缺少 key 会抛异常。"""
+    headers = {
         "Content-Type": "application/json",
         "Accept": "application/vnd.forem.api-v1+json",
     }
+    key = get_devto_api_key()
+    if key:
+        headers["api-key"] = key
+    elif require_key:
+        raise ValueError("DEVTO_API_KEY 未配置（此操作需要 API Key）")
+    return headers
 
 
 # ─── 历史记录管理 ─────────────────────────────────────────
@@ -210,8 +233,33 @@ def ai_score_articles(articles: List[Dict], product_keywords: str) -> List[Tuple
 
 # ─── 评论生成 ─────────────────────────────────────────────
 
-def generate_comment(article: Dict, product_keywords: str) -> Optional[str]:
-    """LLM 生成评论"""
+def load_product_info(product_url: str = "") -> str:
+    """加载产品信息 — 优先从模板文件读取，支持动态获取"""
+    # 1. 尝试从模板加载
+    product_info_file = SKILL_DIR / "templates" / "product-info.md"
+    if product_info_file.exists():
+        with open(product_info_file, encoding="utf-8") as f:
+            return f.read()
+
+    # 2. 降级：从 URL 提取（不阻塞，返回简洁版）
+    if product_url:
+        try:
+            resp = requests.get(product_url, timeout=10)
+            if resp.status_code == 200:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, "html.parser")
+                text = soup.get_text(separator="\n", strip=True)
+                # 只取前1000字符
+                return f"Product URL: {product_url}\n\n{text[:1000]}"
+        except Exception:
+            pass
+
+    # 3. 兜底
+    return f"Product URL: {product_url}"
+
+
+def generate_comment(article: Dict, product_info: str) -> Optional[str]:
+    """LLM 生成评论（含产品推荐）"""
     if not call_llm:
         logger.warning("LLM 不可用，无法生成评论")
         return None
@@ -219,31 +267,44 @@ def generate_comment(article: Dict, product_keywords: str) -> Optional[str]:
     title = article.get("title", "")
     description = article.get("description", "") or ""
     tags = article.get("tag_list", [])
-    url = article.get("url", "")
+    body_markdown = article.get("body_markdown", "") or ""
+    # 正文摘要 — 取前 2000 字符让 LLM 理解文章内容
+    body_preview = body_markdown[:2000]
 
     template = ""
     if COMMENT_TEMPLATE_FILE.exists():
         with open(COMMENT_TEMPLATE_FILE) as f:
             template = f.read()
 
-    prompt = f"""Read this dev.to article and write a thoughtful comment.
+    prompt = f"""You are a developer writing a comment on a dev.to article.
 
-Article Title: {title}
+## Article
+Title: {title}
 Tags: {', '.join(tags)}
 Description: {description}
 
-Context: We are doing developer community engagement related to: {product_keywords}
+## Article Body (preview)
+{body_preview}
 
+## Our Product (mention naturally in your comment)
+{product_info}
+
+## Instructions
 {template}
 
-Return ONLY the comment text, 2-4 sentences, no JSON formatting.
-Comment should sound like a real developer, NOT like marketing."""
+Return ONLY the comment text, nothing else.
+Make it sound like a real developer sharing their honest experience — NOT marketing."""
 
     try:
-        comment = call_llm("You are a developer writing a thoughtful comment on dev.to", prompt)
+        comment = call_llm(
+            "You are a developer writing a thoughtful comment on dev.to. Be natural, experienced, and helpful.",
+            prompt,
+            temperature=0.8,
+            max_tokens=800
+        )
         if comment:
             comment = comment.strip().strip('"').strip("'")
-            if len(comment) > 20:
+            if len(comment) > 30:
                 return comment
     except Exception as e:
         logger.error(f"评论生成失败: {e}")
@@ -253,31 +314,30 @@ Comment should sound like a real developer, NOT like marketing."""
 # ─── 发布评论 ─────────────────────────────────────────────
 
 def publish_comment(article_id: int, comment_body: str, article_url: str = "") -> bool:
-    """通过 BrowserWing 脚本发布评论到 dev.to"""
-    script_url = "http://127.0.0.1:8080/api/v1/scripts/8fda52e1-f197-4ed5-8ee6-8dec3d555a74/play"
+    """通过 BrowserWing 脚本发布评论到 dev.to
+    注意: dev.to 没有公开的评论 API，只能通过浏览器自动化发表评论。
+    """
+    bw_url = os.environ.get("BROWSERWING_EXECUTOR_URL", "http://127.0.0.1:8080")
+    script_url = f"{bw_url}/api/v1/scripts/8fda52e1-f197-4ed5-8ee6-8dec3d555a74/play"
 
     if not article_url:
-        # 从 article_id 构造 URL（不准确，尽量传入真实 URL）
         article_url = f"https://dev.to/api/articles/{article_id}"
 
-    payload = {
-        "params": {
-            "内容": comment_body,
-            "链接": article_url
-        }
-    }
-
+    payload = {"params": {"内容": comment_body, "链接": article_url}}
     try:
         resp = requests.post(script_url, json=payload, timeout=120)
         result = resp.json()
         success = result.get("result", {}).get("success")
         if success:
-            logger.info(f"✅ 评论成功: {article_url}")
+            logger.info(f"✅ BW评论成功: {article_url}")
             return True
         else:
             error = result.get("result", {}).get("errors", "")
-            logger.warning(f"❌ 评论失败: {error}")
+            logger.warning(f"❌ BW评论失败: {error}")
             return False
+    except requests.exceptions.ConnectionError:
+        logger.error("❌ BrowserWing 服务未运行，无法发表评论。请启动 BW 服务。")
+        return False
     except Exception as e:
         logger.error(f"评论异常: {e}")
         return False
@@ -309,13 +369,13 @@ Return ONLY a JSON array of strings. No other text."""
 
 # ─── 并发辅助函数 ─────────────────────────────────────────
 
-def _fetch_and_generate(article_id: int, product_keywords: str) -> Tuple[Optional[int], Optional[str]]:
+def _fetch_and_generate(article_id: int, product_info: str) -> Tuple[Optional[int], Optional[str]]:
     """获取文章详情 + 生成评论（用于并发）"""
     try:
         detail = get_article_detail(article_id)
         if not detail:
             return (article_id, None)
-        comment = generate_comment(detail, product_keywords)
+        comment = generate_comment(detail, product_info)
         return (article_id, comment)
     except Exception as e:
         logger.warning(f"  _fetch_and_generate({article_id}) 异常: {e}")
@@ -335,6 +395,7 @@ def main():
     args = parser.parse_args()
 
     product_keywords = args.product_url or args.keyword or "developer tools"
+    product_info = load_product_info(args.product_url)
 
     if args.action == "search":
         keyword = args.keyword or args.product_url or "AI"
@@ -392,7 +453,7 @@ def main():
             logger.error("无法获取文章详情")
             return
 
-        comment = generate_comment(article_detail, product_keywords)
+        comment = generate_comment(article_detail, product_info)
         if not comment:
             logger.error("评论生成失败")
             return
@@ -459,7 +520,7 @@ def main():
         future_map = {}
         for idx, article in enumerate(fresh_articles):
             article_id = article.get("id")
-            future = executor.submit(_fetch_and_generate, article_id, product_keywords)
+            future = executor.submit(_fetch_and_generate, article_id, product_info)
             future_map[future] = idx
 
         # 收集结果

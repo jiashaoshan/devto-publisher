@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 OPENCLAW_CONFIG_PATH = os.path.expanduser("~/.openclaw/openclaw.json")
 DEFAULT_TIMEOUT = 120
-DEFAULT_MODEL = "qianfan-code-latest"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 def _load_openclaw_config() -> dict:
@@ -28,25 +28,67 @@ def _load_openclaw_config() -> dict:
     return {}
 
 
+def _read_hermes_model() -> tuple:
+    """从 Hermes 配置读取当前模型和供应商"""
+    hermes_cfg = os.path.expanduser("~/.hermes/config.yaml")
+    try:
+        import yaml
+        with open(hermes_cfg) as f:
+            cfg = yaml.safe_load(f)
+        model = cfg.get("model", {}) or {}
+        default = model.get("default", "deepseek-v4-flash")
+        provider = model.get("provider", "sensenova")
+        return default, provider
+    except Exception as e:
+        logger.warning(f"读取 Hermes 配置失败: {e}")
+        return ("deepseek-v4-flash", "sensenova")
+
+
+def _model_matches(name1: str, name2: str) -> bool:
+    """模型名称模糊匹配（处理连字号差异，如 glm5.1 == glm-5.1）"""
+    if name1 == name2:
+        return True
+    return name1.replace("-", "") == name2.replace("-", "")
+
+
 def get_provider_config() -> dict:
-    """获取 baiduqianfancodingplan provider 配置"""
+    """根据 Hermes 当前模型配置，自动匹配可用的 openclaw provider"""
     config = _load_openclaw_config()
     providers = config.get("models", {}).get("providers", {})
-    provider = providers.get("baiduqianfancodingplan", {})
 
-    if not provider:
-        logger.warning("openclaw.json 中未找到 baiduqianfancodingplan provider")
-        # 降级：从 env 读取
-        env = config.get("env", {})
-        api_key = env.get("BAIDU_API_KEY", os.environ.get("BAIDU_API_KEY", ""))
-        if api_key:
-            provider = {
-                "baseUrl": "https://qianfan.baidubce.com/v2/coding",
-                "apiKey": api_key,
-                "api": "openai-completions",
-                "models": [{"id": "qianfan-code-latest"}]
-            }
-    return provider
+    # 已知稳定可用的 providers（按优先级降序）
+    stable_order = [
+        "sensenova",       # deepseek-v4-flash ✅
+        "deepseek",        # 官方 deepseek API ✅
+    ]
+
+    current_model, current_provider = _read_hermes_model()
+    logger.info(f"当前 Hermes 模型: {current_model} (provider: {current_provider})")
+
+    # 遍历稳定列表，优先选匹配当前模型的 provider
+    for name in stable_order:
+        if name not in providers:
+            continue
+        provider = providers[name]
+        provider_models = [m.get("id") for m in (provider.get("models") or [])]
+        for pm in provider_models:
+            if _model_matches(current_model, pm):
+                logger.info(f"✅ 使用稳定提供商 '{name}' 模型 '{pm}'（匹配当前模型）")
+                return provider
+
+    # 没有匹配到当前模型 → 使用第一个稳定提供商
+    for name in stable_order:
+        if name in providers:
+            logger.info(f"✅ 使用稳定提供商 '{name}'（兜底）")
+            return providers[name]
+
+    # 极兜底：遍历所有
+    for name, provider in providers.items():
+        logger.warning(f"降级使用 provider '{name}'")
+        return provider
+
+    logger.warning("openclaw.json 中未找到任何可用 provider")
+    return {}
 
 
 def get_api_key() -> str:
@@ -73,11 +115,17 @@ def get_base_url() -> str:
 
 
 def get_model() -> str:
-    """获取模型名称"""
+    """获取当前 provider 实际使用的模型名称"""
     provider = get_provider_config()
-    models = provider.get("models", [])
-    if models:
-        return models[0].get("id", DEFAULT_MODEL)
+    provider_models = [m.get("id") for m in (provider.get("models") or [])]
+    current_model, _ = _read_hermes_model()
+    # 模糊匹配 provider 的模型列表
+    for pm in provider_models:
+        if _model_matches(current_model, pm):
+            return pm
+    # 兜底：返回第一个模型
+    if provider_models:
+        return provider_models[0]
     return DEFAULT_MODEL
 
 
