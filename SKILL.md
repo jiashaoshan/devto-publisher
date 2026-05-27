@@ -87,7 +87,7 @@ Product URL
 | 决策 | 选择 | 原因 |
 |------|------|------|
 | 评论发表方式 | BrowserWing | dev.to API 不支持创建评论 |
-| LLM 模型提供商 | 动态检测 → 稳定兜底 `sensenova`/`deepseek` | `baiduqianfancodingplan` 频繁限流、`volcengine-plan` 无 CodingPlan 订阅 |
+|| LLM 模型提供商 | 动态检测 → 稳定兜底 `volcengine-plan`/`sensenova`/`deepseek` | 新 key 支持 `ark-code-latest`，兼容 Hermes 模型切换 |
 | 评论生成 | ThreadPool 并发 | 节省 70% 时间 |
 | 评论发表 | 串行 + 随机间隔 | 避免触发风控 |
 | 文章风格 | 经验分享 | dev.to 开发者讨厌硬广 |

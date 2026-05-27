@@ -58,8 +58,9 @@ def get_provider_config() -> dict:
 
     # 已知稳定可用的 providers（按优先级降序）
     stable_order = [
-        "sensenova",       # deepseek-v4-flash ✅
-        "deepseek",        # 官方 deepseek API ✅
+        "volcengine-plan",  # ark-code-latest ✅
+        "sensenova",        # deepseek-v4-flash ✅
+        "deepseek",         # 官方 deepseek API ✅
     ]
 
     current_model, current_provider = _read_hermes_model()

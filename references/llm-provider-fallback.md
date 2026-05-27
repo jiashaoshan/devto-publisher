@@ -16,7 +16,7 @@
 1. 读取 Hermes 配置 (`~/.hermes/config.yaml`) 获取当前模型和供应商
 2. 在 openclaw.json 的 `stable_order` 列表中寻找匹配当前模型的 provider
 3. 若当前模型不匹配任何已知稳定 provider，使用第一个可用稳定 provider
-4. 当前稳定列表（按优先级）: `sensenova` > `deepseek`
+3. 当前稳定列表（按优先级）: `volcengine-plan` > `sensenova` > `deepseek`
 
 ### `get_model()` 名称解析
 
@@ -30,7 +30,7 @@
 | sensenova | https://token.sensenova.cn/v1 | deepseek-v4-flash | ✅ 已验证可用 |
 | deepseek | https://api.deepseek.com | deepseek-v4-flash | ✅ 预期可用（未测试） |
 | baiduqianfancodingplan | https://qianfan.baidubce.com/v2/coding | qianfan-code-latest | ⚠️ 限流频繁，仅 qianfan-code-latest 可用 |
-| volcengine-plan | https://ark.cn-beijing.volces.com/api/coding/v3 | (无有效订阅) | ❌ 无 CodingPlan 订阅 |
+| volcengine-plan | https://ark.cn-beijing.volces.com/api/coding/v3 | ark-code-latest | ✅ 新 key 已验证可用 |
 | omlx | http://100.111.235.91:8000/v1 | gpt-oss-20b-MXFP4-Q8 | ❓ 内网环境 |
 
 ## 维护指南
